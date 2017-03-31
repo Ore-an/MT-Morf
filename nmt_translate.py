@@ -328,10 +328,10 @@ def train_loop(text_fname, num_training, num_epochs, log_mode="a"):
         # log pplx and bleu score
         log_dev_csv.writerow([(epoch+1), pplx_new, bleu_score])
 
-    print("Simple predictions (╯°□°）╯︵ ┻━┻")
+    print("Simple predictions (╯°□°）╯︵ ┻━┻".encode())
     print("training set predictions")
     _ = predict(s=0, num=2, plot=False)
-    print("Simple predictions (╯°□°）╯︵ ┻━┻")
+    print("Simple predictions (╯°□°）╯︵ ┻━┻".encode())
     print("dev set predictions")
     _ = predict(s=NUM_TRAINING_SENTENCES, num=3, plot=False)
     print("{0:s}".format("-"*50))
