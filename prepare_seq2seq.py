@@ -30,12 +30,7 @@ data_fname = {"en": os.path.join(data_dir, "text_all.en"),
 if DATASET == 'MORFESSOR' and not os.path.exists("morfmodel"):
     corpus = list(io.read_corpus_file(data_fname["fr"]))
     enccorpus = []
-    for a,b,c in corpus:
-        if a == 1:
-            enccorpus.append((a,b.encode('utf-8'), c.encode('utf-8')))
-        else:
-            enccorpus.append((a,b,c))
-    morf.load_data(enccorpus)
+    morf.load_data(corpus)
     morf.train_batch()
     io.write_binary_model_file("morfmodel", morf)
 
@@ -65,11 +60,11 @@ def basic_tokenizer(sentence, fr=False):
         for word in words:
             tok += 1
             try:
-                word = morf.segment(word)
+                word = morf.segment(word.decode())
             except KeyError:
                 err +=1
-                word = morf.viterbi_segment(word)[0]
-            morphs.extend(word)
+                word = morf.viterbi_segment(word.decode())[0]
+            morphs.extend([morph.encode() for morph in word])
         return morphs
 
     else:
@@ -92,7 +87,7 @@ def extract_k_lines(fr_fname, en_fname, k):
                     out_fr.write(b" ".join(words_fr) + b"\n")
                     out_en.write(b" ".join(words_en) + b"\n")
                     num_lines += 1
-        print("Total lines={0:d}, valid lines={1:d}".format(i, num_lines))            
+        print("Total lines={0:d}, valid lines={1:d}".format(i, num_lines))
         print("finished writing {0:s} and {1:s}".format(fr_fname, en_fname))
     
 
