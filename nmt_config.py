@@ -76,7 +76,7 @@ elif DATASET == "MORFESSOR":
     BATCH_SIZE = 64
     # A total of 7 buckets, with a length range of 3 each, giving total
     # BUCKET_WIDTH * NUM_BUCKETS = 21 for e.g.
-    BUCKET_WIDTH = 5
+    BUCKET_WIDTH = 3
     NUM_BUCKETS = 10
     MAX_PREDICT_LEN = BUCKET_WIDTH*NUM_BUCKETS
     if NUM_SENTENCES == 50000:

@@ -29,7 +29,13 @@ data_fname = {"en": os.path.join(data_dir, "text_all.en"),
 
 if DATASET == 'MORFESSOR' and not os.path.exists("morfmodel"):
     corpus = list(io.read_corpus_file(data_fname["fr"]))
-    morf.load_data(corpus)
+    enccorpus = []
+    for a,b,c in corpus:
+        if a == 1:
+            enccorpus.append((a,b.encode('utf-8'), c.encode('utf-8')))
+        else:
+            enccorpus.append((a,b,c))
+    morf.load_data(enccorpus)
     morf.train_batch()
     io.write_binary_model_file("morfmodel", morf)
 
