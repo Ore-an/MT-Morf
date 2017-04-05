@@ -94,7 +94,7 @@ def extract_k_lines(fr_fname, en_fname, k):
 
 # In[ ]:
 
-def create_vocab(text_fname, num_train, max_vocabulary_size, freq_thresh):
+def create_vocab(text_fname, num_train, max_vocabulary_size, freq_thresh, char=False):
     vocab = {}
     w2i = {}
     i2w = {}
@@ -105,13 +105,20 @@ def create_vocab(text_fname, num_train, max_vocabulary_size, freq_thresh):
             
             words = line.strip().split()
             for w in words:
-                word = _DIGIT_RE.sub(b"0", w)
-                word = _WORD_SPLIT.sub(b"", w)
-                if word in vocab:
-                    vocab[word] += 1
+                if char:
+                    for c in w:
+                        if c in vocab:
+                            vocab[c] += 1
+                        else:
+                            vocab[c] = 1
                 else:
-                    vocab[word] = 1
-    
+                    word = _DIGIT_RE.sub(b"0", w)
+                    word = _WORD_SPLIT.sub(b"", w)
+                    if word in vocab:
+                        vocab[word] += 1
+                    else:
+                        vocab[word] = 1
+
     print("vocab length before: {0:d}".format(len(vocab)))
     vocab = {k:vocab[k] for k in vocab if vocab[k] > freq_thresh}
     print("vocab length after: {0:d}".format(len(vocab)))
@@ -139,7 +146,7 @@ def create_vocab(text_fname, num_train, max_vocabulary_size, freq_thresh):
 
 # In[ ]:
 
-def create_input_config(k, num_train=NUM_TRAINING_SENTENCES, freq_thresh=FREQ_THRESH):
+def create_input_config(k, num_train=NUM_TRAINING_SENTENCES, freq_thresh=FREQ_THRESH, char=False):
     # Output file names
     if not os.path.exists(input_dir):
         os.makedirs(input_dir)
@@ -168,14 +175,14 @@ def create_input_config(k, num_train=NUM_TRAINING_SENTENCES, freq_thresh=FREQ_TH
     vocab["en"], w2i["en"], i2w["en"] = create_vocab(en_name, 
                                                      num_train=NUM_TRAINING_SENTENCES,
                                                      max_vocabulary_size=max_vocab_size["en"], 
-                                                     freq_thresh=FREQ_THRESH)
+                                                     freq_thresh=FREQ_THRESH, char=char)
     print("*"*50)
     print("fr file")
     print("*"*50)
     vocab["fr"], w2i["fr"], i2w["fr"] = create_vocab(fr_name, 
                                                      num_train=NUM_TRAINING_SENTENCES,
                                                      max_vocabulary_size=max_vocab_size["fr"], 
-                                                     freq_thresh=FREQ_THRESH)
+                                                     freq_thresh=FREQ_THRESH, char=char)
     print("*"*50)
     
     pickle.dump(vocab, open(vocab_path, "wb"))
@@ -185,7 +192,7 @@ def create_input_config(k, num_train=NUM_TRAINING_SENTENCES, freq_thresh=FREQ_TH
 
 # In[ ]:
 
-create_input_config(k=NUM_SENTENCES, num_train=NUM_TRAINING_SENTENCES, freq_thresh=FREQ_THRESH)
+create_input_config(k=NUM_SENTENCES, num_train=NUM_TRAINING_SENTENCES, freq_thresh=FREQ_THRESH, char=CONVOLUTIONAL)
 
 
 # In[ ]:

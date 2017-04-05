@@ -71,8 +71,8 @@ print("vocab size, en={0:d}, fr={1:d}".format(vocab_size_en, vocab_size_fr))
 
 # Set up model
 model = EncoderDecoder(vocab_size_fr, vocab_size_en,
-                       num_layers_enc, num_layers_dec,
-                       hidden_units, gpuid, attn=use_attn)
+                       num_layers_enc, num_layers_dec, num_layers_highway,
+                       hidden_units, gpuid, segment_size, num_filters_conv, attn=use_attn, convolutional=CONVOLUTIONAL)
 if gpuid >= 0:
     cuda.get_device(gpuid).use()
     model.to_gpu()
@@ -96,16 +96,22 @@ def create_buckets():
     print("Splitting data into {0:d} buckets, each of width={1:d}".format(NUM_BUCKETS, buck_width))
     with open(text_fname["fr"], "rb") as fr_file, open(text_fname["en"], "rb") as en_file:
         for i, (line_fr, line_en) in enumerate(zip(fr_file, en_file), start=1):
-            fr_sent = line_fr.strip().split()
-            en_sent = line_en.strip().split()
+            if i > NUM_TRAINING_SENTENCES:
+                break
+            if CONVOLUTIONAL:
+                fr_sent = list(line_fr)
+                en_sent = list(line_en)
+            else:
+                fr_sent = line_fr.strip().split()
+                en_sent = line_en.strip().split()
             
             if len(fr_sent) > 0 and len(en_sent) > 0:
                 max_len = min(max(len(fr_sent), len(en_sent)), 
                               BUCKET_WIDTH * NUM_BUCKETS)
                 buck_indx = ((max_len-1) // buck_width)
 
-                fr_ids = [w2i["fr"].get(w, UNK_ID) for w in fr_sent[:20]]
-                en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent[:20]]
+                fr_ids = [w2i["fr"].get(w, UNK_ID) for w in fr_sent[:max_len]]
+                en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent[:max_len]]
 
                 buckets[buck_indx].append((fr_ids, en_ids))
                 
@@ -143,8 +149,14 @@ def compute_dev_pplx():
             pbar.set_description(out_str)
             for i, (line_fr, line_en) in enumerate(zip(fr_file, en_file), start=1):
                 if i > NUM_TRAINING_SENTENCES and i <= (NUM_TRAINING_SENTENCES + NUM_DEV_SENTENCES):
-                    fr_sent = line_fr.strip().split()
-                    en_sent = line_en.strip().split()
+
+                    if CONVOLUTIONAL:
+                        fr_sent = list(line_fr)
+                        en_sent = list(line_en)
+                    else:
+                        fr_sent = line_fr.strip().split()
+                        en_sent = line_en.strip().split()
+
 
                     fr_ids = [w2i["fr"].get(w, UNK_ID) for w in fr_sent]
                     en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent]
@@ -209,17 +221,24 @@ def compute_dev_bleu():
                     out_str = "predicting sentence={0:d}".format(i)
                     pbar.update(1)
                     
-                    fr_sent = line_fr.strip().split()
-                    en_sent = line_en.strip().split()
+                    if CONVOLUTIONAL:
+                        fr_sent = list(line_fr)
+                        en_sent = list(line_en)
+                    else:
+                        fr_sent = line_fr.strip().split()
+                        en_sent = line_en.strip().split()
 
                     fr_ids = [w2i["fr"].get(w, UNK_ID) for w in fr_sent]
                     en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent]
 
-                    list_of_references.append(line_en.strip().decode())
+                    # list_of_references.append(line_en.strip().split().decode())
+                    reference_words = [w.decode() for w in line_en.strip().split()]
+                    list_of_references.append(reference_words)
                     pred_sent, alpha_arr = model.encode_decode_predict(fr_ids)
                     pred_words = [i2w["en"][w].decode() for w in pred_sent if w != EOS_ID]
-                    pred_sent_line = " ".join(pred_words)
-                    list_of_hypotheses.append(pred_sent_line)
+                    # pred_sent_line = " ".join(pred_words)
+                    # list_of_hypotheses.append(pred_sent_line)
+                    list_of_hypotheses.append(pred_words)
                 if i > (NUM_TRAINING_SENTENCES + NUM_DEV_SENTENCES):
                     break
 
@@ -260,8 +279,13 @@ def train_loop(text_fname, num_training, num_epochs, log_mode="a"):
                 pbar.set_description(out_str)
 
                 for i, (line_fr, line_en) in enumerate(zip(fr_file, en_file), start=1):
-                    fr_sent = line_fr.strip().split()
-                    en_sent = line_en.strip().split()
+
+                    if CONVOLUTIONAL:
+                        fr_sent = list(line_fr)
+                        en_sent = list(line_en)
+                    else:
+                        fr_sent = line_fr.strip().split()
+                        en_sent = line_en.strip().split()
 
                     fr_ids = [w2i["fr"].get(w, UNK_ID) for w in fr_sent]
                     en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent]
@@ -535,11 +559,18 @@ def plot_attention(alpha_arr, fr, en, plot_name=None):
 # In[ ]:
 
 def predict_sentence(line_num, line_fr, line_en=None, display=True, plot_name=None, p_filt=0, r_filt=0):
-    fr_sent = line_fr.strip().split()
+    if CONVOLUTIONAL:
+        fr_sent = list(line_fr)
+    else:
+        fr_sent = line_fr.strip().split()
     fr_ids = [w2i["fr"].get(w, UNK_ID) for w in fr_sent]
     # english reference is optional. If provided, compute precision/recall
     if line_en:
-        en_sent = line_en.strip().split()
+        if CONVOLUTIONAL:
+            en_sent = list(line_en)
+        else:
+            en_sent = line_en.strip().split()
+
         en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent]
 
     pred_ids, alpha_arr = model.encode_decode_predict(fr_ids)

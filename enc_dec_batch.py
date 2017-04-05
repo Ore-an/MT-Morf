@@ -28,8 +28,8 @@ from nmt_config import *
 class EncoderDecoder(Chain):
 
     def __init__(self, vsize_enc, vsize_dec,
-                 nlayers_enc, nlayers_dec,
-                 n_units, gpuid, attn=False):
+                 nlayers_enc, nlayers_dec, nlayers_highway,
+                 n_units, gpuid, segment_size=None, n_filters=None, attn=False, convolutional=False):
         '''
         vsize:   vocabulary size
         nlayers: # layers
@@ -43,15 +43,35 @@ class EncoderDecoder(Chain):
         # add embedding layer
         self.add_link("embed_enc", L.EmbedID(vsize_enc, n_units))
 
+        if convolutional:
+            #add convolutional layers
+            self.conv_enc = []
+            for i in range(n_filters):
+                self.conv_enc.append("L{0:d}_conv".format(i))
+                self.add_link(self.conv_enc[-1], L.Convolution2D(in_channels=1, out_channels=1, ksize = ((i+1), n_units),
+                                                                 stride=(1,0), pad=((i-1),0)))
+            #add highway layers
+            self.highway = ["L{0:d}_hw".format(i) for i in range(nlayers_highway)]
+            for h_name in self.highway:
+                self.add_link(h_name, L.Highway(n_filters))
+
+
         # add LSTM layers
+
         self.lstm_enc = ["L{0:d}_enc".format(i) for i in range(nlayers_enc)]
         for lstm_name in self.lstm_enc:
-            self.add_link(lstm_name, L.LSTM(n_units, n_units))
+            if convolutional:
+                self.add_link(lstm_name, L.LSTM(n_filters, n_units))
+            else:
+                self.add_link(lstm_name, L.LSTM(n_units, n_units))
 
         # reverse LSTM layer
         self.lstm_rev_enc = ["L{0:d}_rev_enc".format(i) for i in range(nlayers_enc)]
         for lstm_name in self.lstm_rev_enc:
-            self.add_link(lstm_name, L.LSTM(n_units, n_units))
+            if convolutional:
+                self.add_link(lstm_name, L.LSTM(n_filters, n_units))
+            else:
+                self.add_link(lstm_name, L.LSTM(n_units, n_units))
 
         #--------------------------------------------------------------------
         # add decoder layers
@@ -76,6 +96,9 @@ class EncoderDecoder(Chain):
         # Store GPU id
         self.gpuid = gpuid
         self.n_units = n_units
+        self.convolutional = convolutional
+        self.segment_size = segment_size
+        self.n_filters = n_filters
 
         xp = cuda.cupy if self.gpuid >= 0 else np
 
@@ -108,19 +131,41 @@ class EncoderDecoder(Chain):
         lstm_layer:  list of lstm layer names
     '''
     def feed_lstm(self, word, embed_layer, lstm_layer_list, train):
-        # get embedding
-        embed_id = embed_layer(word)
-        # feed into first LSTM layer
-        hs = self[lstm_layer_list[0]](embed_id)
+        if self.convolutional:
+            hs = self[lstm_layer_list[0]](word)
+        else:
+            # get embedding
+            embed_id = embed_layer(word)
+            # feed into first LSTM layer
+            hs = self[lstm_layer_list[0]](embed_id)
         # feed into remaining LSTM layers
         for lstm_layer in lstm_layer_list[1:]:
             hs = F.dropout(self[lstm_layer](hs), ratio=0.2, train=train)
 
-    def encode(self, word, lstm_layer_list, train):
-        self.feed_lstm(word, self.embed_enc, lstm_layer_list, train)
+    def encode(self, word, lstm_layer_list, train, conv_emb=None):
+        if self.convolutional:
+            self.feed_lstm(word, self.embed_enc, lstm_layer_list, train, conv_emb)
+        else:
+            self.feed_lstm(word, self.embed_enc, lstm_layer_list, train)
 
     def decode(self, word, train):
         self.feed_lstm(word, self.embed_dec, self.lstm_dec, train)
+
+    def convolution_embed(self, in_word_list, train=True):
+        ## convolution has 4 dimensions: batches, channels, h and w
+        f_sent_enc = self.embed_enc(in_word_list)
+        conv_sent = self[self.conv_enc[0]](f_sent_enc)
+        for i in range(1, len(self.conv_enc)):
+            conv_sent = F.Concat(conv_sent, self[self.conv_enc[i]](f_sent_enc))
+        conv_sent = F.relu(conv_sent)
+        segments = F.max_pooling_2d(conv_sent, ksize=(segment_size, 1))
+        segment_emb = self[self.highway[0]](segments)
+        for i in range(1, len(self.highway)):
+            segment_emb = self[self.highway[i]](segment_emb)
+        return segment_emb
+
+    def batch_convolution embed:
+
 
     #--------------------------------------------------------------------
     # For SGD - Batch size = 1
@@ -135,6 +180,10 @@ class EncoderDecoder(Chain):
                            volatile=(not train)))
 
         first_entry = True
+
+        if self.convolutional:
+            var_en = self.convolution_embed(var_en)
+            var_rev_en = F.fliplr(var_en)
 
 
         # encode tokens
@@ -303,6 +352,11 @@ class EncoderDecoder(Chain):
         first_entry = True
 
         seq_len, batch_size = var_en.shape
+
+        if self.convolutional:
+            ##### this could be absolutely wrong
+            var_en = self.convolution_embed(var_en)
+            var_rev_en = F.fliplr(var_en)
 
         if self.attn:
             self.mask = self.xp.expand_dims(fwd_encoder_batch != 0, -1)
