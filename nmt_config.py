@@ -46,7 +46,7 @@ if DATASET == "OPEN_SUB":
     # remaining (max 10%) left to be used for dev. For training, we limit the dev size to 500 to speed up perplexity and Bleu computation
     NUM_DEV_SENTENCES = 500
     FREQ_THRESH = 0
-    BATCH_SIZE = 1
+    BATCH_SIZE = 64
     # A total of 7 buckets, with a length range of 3 each, giving total
     # BUCKET_WIDTH * NUM_BUCKETS = 21 for e.g.
     BUCKET_WIDTH = 3
