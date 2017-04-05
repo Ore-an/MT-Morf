@@ -29,7 +29,7 @@ DATASET = ["OPEN_SUB", "INUKTITUT", "MORFESSOR"][2]
 
 EXP_NAME_PREFIX="morf2"
 
-CONVOLUTIONAL= True
+CONVOLUTIONAL= False
 
 if DATASET == "OPEN_SUB":
 #-----------------------------------------------------------------
