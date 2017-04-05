@@ -104,9 +104,9 @@ def create_buckets():
             else:
                 fr_sent = line_fr.strip().split()
                 en_sent = line_en.strip().split()
-            
+
             if len(fr_sent) > 0 and len(en_sent) > 0:
-                max_len = min(max(len(fr_sent), len(en_sent)), 
+                max_len = min(max(len(fr_sent), len(en_sent)),
                               BUCKET_WIDTH * NUM_BUCKETS)
                 buck_indx = ((max_len-1) // buck_width)
 
@@ -114,13 +114,13 @@ def create_buckets():
                 en_ids = [w2i["en"].get(w, UNK_ID) for w in en_sent[:max_len]]
 
                 buckets[buck_indx].append((fr_ids, en_ids))
-                
+
     # Saving bucket data
     print("Saving bucket data")
     for i, bucket in enumerate(buckets):
         print("Bucket {0:d}, # items={1:d}".format((i+1)*BUCKET_WIDTH, len(bucket)))
         pickle.dump(bucket, open(bucket_data_fname.format(i+1), "wb"))
-    
+
     #return buckets
 
 
@@ -137,7 +137,7 @@ def compute_prec_recall():
     print("{0:s} | {1:0.4f}".format("precision", prec))
     print("{0:s} | {1:0.4f}".format("recall", rec))
     print("{0:s} | {1:0.4f}".format("f1", f_score))
-    
+
 # In[ ]:
 def compute_dev_pplx():
     loss = 0
@@ -169,7 +169,7 @@ def compute_dev_pplx():
                     out_str = "loss={0:.6f}".format(curr_loss)
                     pbar.set_description(out_str)
                     pbar.update(1)
-                
+
             # end of for
         # end of pbar
     # end of with open file
@@ -220,7 +220,7 @@ def compute_dev_bleu():
 
                     out_str = "predicting sentence={0:d}".format(i)
                     pbar.update(1)
-                    
+
                     if CONVOLUTIONAL:
                         fr_sent = list(line_fr)
                         en_sent = list(line_en)
@@ -352,6 +352,10 @@ def train_loop(text_fname, num_training, num_epochs, log_mode="a"):
         # log pplx and bleu score
         log_dev_csv.writerow([(epoch+1), pplx_new, bleu_score])
 
+    print("Final saving model")
+    serializers.save_npz(model_fil, model)
+    print("Finished saving model")
+
     print("Simple predictions")
     print("training set predictions")
     _ = predict(s=0, num=2, plot=False)
@@ -362,9 +366,7 @@ def train_loop(text_fname, num_training, num_epochs, log_mode="a"):
     _ = compute_dev_bleu()
     print("{0:s}".format("-"*50))
 
-    print("Final saving model")
-    serializers.save_npz(model_fil, model)
-    print("Finished saving model")
+
 
     # close log file
     log_train_fil.close()
@@ -373,14 +375,14 @@ def train_loop(text_fname, num_training, num_epochs, log_mode="a"):
     print(log_dev_fil_name)
     print(model_fil)
 
-    
-    
+
+
 # In[ ]:
-def batch_train_loop(bucket_fname, num_epochs, 
+def batch_train_loop(bucket_fname, num_epochs,
                      batch_size=10, num_buckets=NUM_BUCKETS,
-                     num_training=2, 
+                     num_training=2,
                      bucket_width=BUCKET_WIDTH, log_mode="a", last_epoch_id=0):
-    
+
     # Set up log file for loss
     log_train_fil = open(log_train_fil_name, mode=log_mode)
     log_train_csv = csv.writer(log_train_fil, lineterminator="\n")
@@ -403,11 +405,11 @@ def batch_train_loop(bucket_fname, num_epochs,
             out_str = "epoch={0:d}, iter={1:d}, loss={2:.4f}, mean loss={3:.4f}, bucket={4:d}".format(
                             epoch+1, 0, 0, 0,0)
             pbar.set_description(out_str)
-            
+
             for buck_indx in range(num_buckets):
                 bucket_data = pickle.load(open(bucket_data_fname.format(buck_indx+1), "rb"))
                 buck_pad_lim = (buck_indx+1) * bucket_width
-                
+
                 for i in range(0, len(bucket_data), batch_size):
                     if train_count >= num_training:
                         break
@@ -417,10 +419,10 @@ def batch_train_loop(bucket_fname, num_epochs,
                     #print("bucket limit", buck_pad_lim)
                     curr_len = len(bucket_data[i:i+next_batch_end])
 
-                    loss = model.encode_decode_train_batch(bucket_data[i:i+next_batch_end], 
+                    loss = model.encode_decode_train_batch(bucket_data[i:i+next_batch_end],
                                                           buck_pad_lim, buck_pad_lim)
                     train_count += curr_len
-            
+
                     # set up for backprop
                     model.cleargrads()
                     loss.backward()
@@ -429,18 +431,18 @@ def batch_train_loop(bucket_fname, num_epochs,
                     # store loss value for display
                     loss_val = float(loss.data)
                     loss_per_epoch += loss_val
-                    
+
                     it = (epoch * NUM_TRAINING_SENTENCES) + curr_len
-                    
+
                     out_str = "epoch={0:d}, iter={1:d}, loss={2:.4f}, mean loss={3:.4f}, bucket={4:d}".format(
                                epoch+1, it, loss_val, (loss_per_epoch / (i+1)), (buck_indx+1))
                     pbar.set_description(out_str)
                     pbar.update(curr_len)
-                    
+
                     # log every 10 batches
                     if i % 10 == 0:
                         log_train_csv.writerow([it, loss_val])
-                
+
                 if train_count >= num_training:
                     break
 
@@ -632,7 +634,7 @@ def predict(s=NUM_TRAINING_SENTENCES, num=NUM_DEV_SENTENCES, display=True, plot=
                 cp, tp, t, f = predict_sentence(i, line_fr,
                                              line_en,
                                              display=display,
-                                             plot_name=plot_name, 
+                                             plot_name=plot_name,
                                              p_filt=p_filt, r_filt=r_filt)
                 metrics["cp"].append(cp)
                 metrics["tp"].append(tp)
@@ -696,16 +698,14 @@ def main():
             return
     if NUM_EPOCHS > 0:
         #train_loop(text_fname, NUM_TRAINING_SENTENCES, NUM_EPOCHS)
-        batch_train_loop(bucket_data_fname, 
-                 num_epochs=NUM_EPOCHS, 
+        batch_train_loop(bucket_data_fname,
+                 num_epochs=NUM_EPOCHS,
                  batch_size=BATCH_SIZE,
                  num_buckets=NUM_BUCKETS,
                  num_training=NUM_TRAINING_SENTENCES,
                  bucket_width=BUCKET_WIDTH, last_epoch_id=max_epoch_id)
         compute_dev_bleu()
-    
+
 
 if __name__ == "__main__":
     main()
-
-

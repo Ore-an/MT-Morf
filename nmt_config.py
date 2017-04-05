@@ -25,11 +25,11 @@ attn_post = ["NO_ATTN", "SOFT_ATTN"]
 
 NUM_SENTENCES = 50000
 
-DATASET = ["OPEN_SUB", "INUKTITUT", "MORFESSOR"][2]
+DATASET = ["OPEN_SUB", "INUKTITUT", "MORFESSOR"][0]
 
-EXP_NAME_PREFIX="morf2"
+EXP_NAME_PREFIX="conv"
 
-CONVOLUTIONAL= False
+CONVOLUTIONAL= True
 
 if DATASET == "OPEN_SUB":
 #-----------------------------------------------------------------
@@ -159,7 +159,7 @@ create_buckets_flag = True
 #---------------------------------------------------------------------
 # if 0 - will only load a previously saved model if it exists
 #---------------------------------------------------------------------
-NUM_EPOCHS = 10
+NUM_EPOCHS = 1
 
 # Change the dev set to include all the sentences not used for training, instead of 500
 # Using all during training impacts timing

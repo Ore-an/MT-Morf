@@ -48,12 +48,13 @@ class EncoderDecoder(Chain):
             self.conv_enc = []
             for i in range(n_filters):
                 self.conv_enc.append("L{0:d}_conv".format(i))
-                self.add_link(self.conv_enc[-1], L.Convolution2D(in_channels=1, out_channels=1, ksize = ((i+1), n_units),
-                                                                 stride=(1,0), pad=((i-1),0)))
+                self.add_link(self.conv_enc[-1], L.Convolution2D(in_channels=1, out_channels=1, ksize=((i+1), n_units),
+                                                                 stride=(1, 100)))
             #add highway layers
             self.highway = ["L{0:d}_hw".format(i) for i in range(nlayers_highway)]
             for h_name in self.highway:
                 self.add_link(h_name, L.Highway(n_filters))
+
 
 
         # add LSTM layers
@@ -102,6 +103,7 @@ class EncoderDecoder(Chain):
 
         xp = cuda.cupy if self.gpuid >= 0 else np
 
+        self.padding = (Variable(xp.zeros((1,1, 1, 100), dtype=xp.float32)))
         # create masking array for pad id
         self.mask_pad_id = xp.ones(vsize_dec, dtype=xp.float32)
         # make the class weight for pad id equal to 0
@@ -144,7 +146,7 @@ class EncoderDecoder(Chain):
 
     def encode(self, word, lstm_layer_list, train, conv_emb=None):
         if self.convolutional:
-            self.feed_lstm(word, self.embed_enc, lstm_layer_list, train, conv_emb)
+            self.feed_lstm(word, self.embed_enc, lstm_layer_list, train)
         else:
             self.feed_lstm(word, self.embed_enc, lstm_layer_list, train)
 
@@ -154,15 +156,42 @@ class EncoderDecoder(Chain):
     def convolution_embed(self, in_word_list, train=True):
         ## convolution has 4 dimensions: batches, channels, h and w
         f_sent_enc = self.embed_enc(in_word_list)
+        x,y,z = f_sent_enc.data.shape
+        f_sent_enc = F.reshape(f_sent_enc, (x, 1, y, z))
         conv_sent = self[self.conv_enc[0]](f_sent_enc)
         for i in range(1, len(self.conv_enc)):
-            conv_sent = F.Concat(conv_sent, self[self.conv_enc[i]](f_sent_enc))
+            if i % 2 == 0:
+                f_sent_enc.data = np.pad(f_sent_enc.data,((0,0),(0,0),(1,0),(0,0)),'constant')
+            else:
+                f_sent_enc.data = np.pad(f_sent_enc.data,((0,0),(0,0),(0,1),(0,0)),'constant')
+            new_conv = self[self.conv_enc[i]](f_sent_enc)
+            conv_sent = F.concat((conv_sent, new_conv))
         conv_sent = F.relu(conv_sent)
-        segments = F.max_pooling_2d(conv_sent, ksize=(segment_size, 1))
-        segment_emb = self[self.highway[0]](segments)
-        for i in range(1, len(self.highway)):
-            segment_emb = self[self.highway[i]](segment_emb)
-        return segment_emb
+        segments = F.max_pooling_2d(conv_sent, ksize=(self.segment_size, 1))
+        x,y,z,w = segments.data.shape
+        segments = F.reshape(segments, (x, y, z))
+        first_phrase = True
+        for phrase_seg in segments:
+            phrase = F.transpose(phrase_seg)
+
+            segment_emb = self[self.highway[0]](phrase)
+            for i in range(1, len(self.highway)):
+                segment_emb = self[self.highway[i]](segment_emb)
+
+            x, y = segment_emb.shape
+            segment_emb = F.reshape(segment_emb, (1,x,y))
+                            #maybe a transpose here for segment_emb
+            if first_phrase:
+                phrase_emb = segment_emb
+
+                first_phrase = False
+            else:
+                phrase_emb = F.vstack((phrase_emb, segment_emb))
+
+
+
+
+        return phrase_emb
 
 
     #--------------------------------------------------------------------
