@@ -164,8 +164,6 @@ class EncoderDecoder(Chain):
             segment_emb = self[self.highway[i]](segment_emb)
         return segment_emb
 
-    def batch_convolution embed:
-
 
     #--------------------------------------------------------------------
     # For SGD - Batch size = 1
