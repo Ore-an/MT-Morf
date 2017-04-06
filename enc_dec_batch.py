@@ -60,20 +60,23 @@ class EncoderDecoder(Chain):
         # add LSTM layers
 
         self.lstm_enc = ["L{0:d}_enc".format(i) for i in range(nlayers_enc)]
-        for lstm_name in self.lstm_enc:
-            if convolutional:
-                self.add_link(lstm_name, L.LSTM(n_filters, n_units))
-            else:
+        if convolutional:
+            self.add_link(self.lstm_enc[0], L.LSTM(n_filters, n_units))
+            for lstm_name in self.lstm_enc[1:]:
+                self.add_link(lstm_name, L.LSTM(n_units, n_units))
+        else:
+            for lstm_name in self.lstm_enc:
                 self.add_link(lstm_name, L.LSTM(n_units, n_units))
 
         # reverse LSTM layer
         self.lstm_rev_enc = ["L{0:d}_rev_enc".format(i) for i in range(nlayers_enc)]
-        for lstm_name in self.lstm_rev_enc:
-            if convolutional:
-                self.add_link(lstm_name, L.LSTM(n_filters, n_units))
-            else:
+        if convolutional:
+            self.add_link(self.lstm_rev_enc[0], L.LSTM(n_filters, n_units))
+            for lstm_name in self.lstm_rev_enc[1:]:
                 self.add_link(lstm_name, L.LSTM(n_units, n_units))
-
+        else:
+            for lstm_name in self.lstm_rev_enc:
+                self.add_link(lstm_name, L.LSTM(n_units, n_units))
         #--------------------------------------------------------------------
         # add decoder layers
         #--------------------------------------------------------------------
@@ -132,8 +135,8 @@ class EncoderDecoder(Chain):
         embed_layer: embeddings layer to use
         lstm_layer:  list of lstm layer names
     '''
-    def feed_lstm(self, word, embed_layer, lstm_layer_list, train):
-        if self.convolutional:
+    def feed_lstm(self, word, embed_layer, lstm_layer_list, train, enc=False):
+        if self.convolutional and enc:
             hs = self[lstm_layer_list[0]](word)
         else:
             # get embedding
@@ -144,9 +147,9 @@ class EncoderDecoder(Chain):
         for lstm_layer in lstm_layer_list[1:]:
             hs = F.dropout(self[lstm_layer](hs), ratio=0.2, train=train)
 
-    def encode(self, word, lstm_layer_list, train, conv_emb=None):
+    def encode(self, word, lstm_layer_list, train):
         if self.convolutional:
-            self.feed_lstm(word, self.embed_enc, lstm_layer_list, train)
+            self.feed_lstm(word, self.embed_enc, lstm_layer_list, train, enc=True)
         else:
             self.feed_lstm(word, self.embed_enc, lstm_layer_list, train)
 
@@ -180,15 +183,12 @@ class EncoderDecoder(Chain):
 
             x, y = segment_emb.shape
             segment_emb = F.reshape(segment_emb, (1,x,y))
-                            #maybe a transpose here for segment_emb
+            #segment_emb = F.transpose(segment_emb)
             if first_phrase:
                 phrase_emb = segment_emb
-
                 first_phrase = False
             else:
                 phrase_emb = F.vstack((phrase_emb, segment_emb))
-
-
 
 
         return phrase_emb
@@ -209,6 +209,7 @@ class EncoderDecoder(Chain):
         first_entry = True
 
         if self.convolutional:
+            var_en = F.transpose(var_en)
             var_en = self.convolution_embed(var_en)
             var_rev_en = F.fliplr(var_en)
 
@@ -370,7 +371,7 @@ class EncoderDecoder(Chain):
     # For batch size > 1
     #--------------------------------------------------------------------
     def encode_batch(self, fwd_encoder_batch, rev_encoder_batch, train=True):
-        #xp = cuda.cupy if self.gpuid >= 0 else np
+        xp = cuda.cupy if self.gpuid >= 0 else np
         # convert list of tokens into chainer variable list
         var_en = (Variable(fwd_encoder_batch.T, volatile=(not train)))
 
@@ -380,13 +381,40 @@ class EncoderDecoder(Chain):
 
         seq_len, batch_size = var_en.shape
 
+
         if self.convolutional:
             ##### this could be absolutely wrong
+            var_en = F.transpose(var_en)
             var_en = self.convolution_embed(var_en)
-            var_rev_en = F.fliplr(var_en)
+            var_en = F.swapaxes(var_en, 0, 1)
+            var_rev_en = F.flipud(var_en)
+            seq_len, batch_size, filt = var_en.shape
+
+        else:
+            seq_len, batch_size = var_en.shape
 
         if self.attn:
-            self.mask = self.xp.expand_dims(fwd_encoder_batch != 0, -1)
+
+            if self.convolutional:
+                self.mask = xp.asarray(fwd_encoder_batch, dtype=bool)
+                new_mask = []
+                for i in range(len(self.mask)):
+                    new_i = []
+                    lenphr = len(self.mask[i])
+                    for j in range(-(-lenphr // segment_size)):
+                        k = min((lenphr - 1), (segment_size * (j+1)))
+
+
+                        if any(self.mask[i][j:k]):
+                            new_i.append(True)
+                        else:
+                            new_i.append(False)
+                    new_mask.append(new_i)
+
+                self.mask = self.xp.expand_dims(new_mask, -1)
+
+            else:
+                self.mask = self.xp.expand_dims(fwd_encoder_batch != 0, -1)
             self.minf = Variable(self.xp.full((batch_size, seq_len, 1), -1000.,
                                  dtype=self.xp.float32), volatile=not train)
 

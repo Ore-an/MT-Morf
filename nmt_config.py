@@ -49,13 +49,13 @@ if DATASET == "OPEN_SUB":
     BATCH_SIZE = 64
     # A total of 7 buckets, with a length range of 3 each, giving total
     # BUCKET_WIDTH * NUM_BUCKETS = 21 for e.g.
-    BUCKET_WIDTH = 3
-    NUM_BUCKETS = 7
     if not CONVOLUTIONAL:
-        MAX_PREDICT_LEN = BUCKET_WIDTH*NUM_BUCKETS
+        BUCKET_WIDTH = 3
+        NUM_BUCKETS = 7
     else:
-        MEAN_CHARACTERS = 6
-        MAX_PREDICT_LEN = BUCKET_WIDTH * NUM_BUCKETS * MEAN_CHARACTERS
+        BUCKET_WIDTH = 5
+        NUM_BUCKETS = 20
+    MAX_PREDICT_LEN = BUCKET_WIDTH * NUM_BUCKETS
     if NUM_SENTENCES == 50000:
         # 50K
         EXP_NAME= EXP_NAME_PREFIX + "_budoslab"
